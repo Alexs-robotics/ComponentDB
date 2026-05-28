@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ComponentDB</title>
+<title>ComponentDB by AF</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -42,7 +42,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 /* ── Layout ────────────────────────────────────────── */
-#app { display: flex; flex-direction: column; height: 100vh; }
+#app { display: flex; flex-direction: column; height: 100dvh; }
 
 /* ── Header ────────────────────────────────────────── */
 header {
@@ -72,8 +72,24 @@ header {
 
 /* ── Tabs ──────────────────────────────────────────── */
 nav {
-  display: flex; background: var(--bg1); border-bottom: 1px solid var(--border);
-  padding: 0 16px; flex-shrink: 0;
+  display: flex;
+  flex-direction: row;       /* ← add this explicitly */
+  flex-wrap: nowrap;         /* ← add this explicitly */
+  overflow-x: auto;          /* ← from previous fix */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+nav::-webkit-scrollbar { display: none; }
+
+@media (max-width: 600px) {
+  nav { padding: 0 4px; }
+  .tab { padding: 10px 14px; font-size: 11px; gap: 4px; }
+  .tab svg { width: 12px; height: 12px; }
+  .tab-badge { display: none; } /* optional: hides the count badge to save space */
 }
 .tab {
   padding: 10px 20px; cursor: pointer; font-size: 12px; font-weight: 500;
@@ -98,7 +114,7 @@ nav {
 #panel-scanner { display: none; padding: 16px; }
 #panel-scanner.active { display: flex; flex-direction: column; gap: 16px; }
 
-.scan-layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; height: calc(100vh - 140px); }
+.scan-layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; height: calc(100dvh - 140px); }
 @media (max-width: 900px) { .scan-layout { grid-template-columns: 1fr; height: auto; } }
 
 /* Camera area */
@@ -342,7 +358,7 @@ tr:hover td { background: var(--bg2); }
 .editable-field:focus { border-color: var(--cyan); background: var(--bg3); }
 
 /* ── QUERY TAB ──────────────────────────────────────── */
-.query-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; height: calc(100vh - 160px); }
+.query-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; height: calc(100dvh - 160px); }
 @media (max-width: 800px) { .query-layout { grid-template-columns: 1fr; height: auto; } }
 
 .query-sidebar { display: flex; flex-direction: column; gap: 8px; }
@@ -433,7 +449,7 @@ tr:hover td { background: var(--bg2); }
 .field-input::-webkit-outer-spin-button, .field-input::-webkit-inner-spin-button { -webkit-appearance: none; }
 
 /* Scrollable panel height  */
-#panel-inventory, #panel-query, #panel-history, #panel-bom { height: calc(100vh - 110px); overflow-y: auto; }
+#panel-inventory, #panel-query, #panel-history, #panel-bom { height: calc(100dvh - 110px); overflow-y: auto; }
 
 /* Loading spinner */
 .spinner {
@@ -482,6 +498,47 @@ tr:hover td { background: var(--bg2); }
 .bom-status-badge.miss { background: rgba(248,81,73,.12);  color: var(--red);   }
 .bom-progress { height: 4px; border-radius: 2px; background: var(--bg3); margin-top: 6px; overflow: hidden; }
 .bom-progress-bar { height: 100%; border-radius: 2px; transition: width .4s; }
+
+@media (max-width: 600px) {
+  header { padding: 0 10px; gap: 8px; }
+  .logo-text span { display: none; } /* hides the "by Alessandro..." part */
+  .logo-text { font-size: 16px; }
+  .stats-bar { gap: 10px; }
+  .stat-item:last-child { display: none; } /* hides least important stat if needed */
+
+@media (max-width: 600px) {
+  .camera-card { min-height: 280px; }
+  .camera-body { min-height: 180px; }
+}
+
+@media (max-width: 600px) {
+  .tx-item {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 6px 12px;
+  }
+  .tx-time {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+}
+
+@media (max-width: 480px) {
+  #toast {
+    right: 12px;
+    left: 12px;
+    max-width: none;
+    bottom: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  /* hide Description and Package columns */
+  th:nth-child(3), td:nth-child(3),
+  th:nth-child(5), td:nth-child(5) { display: none; }
+  td, th { padding: 7px 10px; }
+}
+}
 </style>
 </head>
 <body>
@@ -494,7 +551,7 @@ tr:hover td { background: var(--bg2); }
           <path d="M3 5h2v14H3V5zm4 0h2v14H7V5zm4 0h1v14h-1V5zm3 0h2v14h-2V5zm4 0h3v14h-3V5z"/>
         </svg>
       </div>
-      <span class="logo-text">Component<span>DB</span></span>
+      <span class="logo-text">Component<span>DB by Alessandro Francavilla | @a.lell.o On insta</span></span>
     </div>
     <div class="stats-bar" id="header-stats">
       <div class="stat-item"><div class="stat-dot"></div><span class="stat-num" id="stat-parts">—</span>&nbsp;parts</div>
@@ -630,9 +687,14 @@ tr:hover td { background: var(--bg2); }
     <div class="panel" id="panel-inventory">
       <div class="section-head">
         <span class="section-title">Inventory</span>
-        <button class="btn btn-primary" onclick="openAddModal()" style="width:auto;padding:8px 16px">
-          + Add Component
-        </button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-ghost" onclick="enrichOldData()" style="width:auto;padding:8px 16px" title="Fetch missing data from LCSC">
+            Auto Enrich
+          </button>
+          <button class="btn btn-primary" onclick="openAddModal()" style="width:auto;padding:8px 16px">
+            + Add Component
+          </button>
+        </div>
       </div>
 
       <div class="inv-toolbar">
@@ -712,8 +774,11 @@ tr:hover td { background: var(--bg2); }
           <div class="template-btn" onclick="setQuery(`SELECT c.part_number, c.description,\n  SUM(CASE WHEN t.operation='ADD' THEN t.quantity_change ELSE 0 END) as total_in,\n  SUM(CASE WHEN t.operation='REMOVE' THEN ABS(t.quantity_change) ELSE 0 END) as total_out,\n  c.quantity as current\nFROM components c\nLEFT JOIN transactions t ON c.id = t.component_id\nGROUP BY c.id\nORDER BY total_in DESC`)">
             <strong>Usage Stats</strong>Total in/out per part
           </div>
-          <div class="template-btn" onclick="setQuery(`SELECT part_number, manufacturer_part, description, package, quantity\nFROM components\nWHERE description LIKE '%capacitor%'\n   OR description LIKE '%CAP%'\nORDER BY part_number`)">
-            <strong>Find Capacitors</strong>Search by description
+          <div class="template-btn" onclick="setQuery(`SELECT part_number, value, description, package, quantity\nFROM components\nWHERE category LIKE '%capacitor%'\n   OR category LIKE '%CAP%'\nORDER BY part_number`)">
+            <strong>Find Capacitors</strong>Search by category
+          </div>
+          <div class="template-btn" onclick="setQuery(`SELECT part_number, value, description, package, quantity\nFROM components\nWHERE category LIKE '%resistor%'\n   OR category LIKE '%RES%'\nORDER BY part_number`)">
+            <strong>Find Resistors</strong>Search by category
           </div>
 
           <div class="sidebar-label" style="margin-top:8px">Schema</div>
@@ -986,22 +1051,19 @@ async function startScanner() {
     await scanner.start(
       { deviceId: { exact: cam.id } },
       {
-        fps: 15, // Aumentiamo i frame per secondo
-        // Rendiamo l'area di scansione dinamica (80% della larghezza) invece di un quadrato rigido
-        qrbox: function(viewfinderWidth, viewfinderHeight) {
-            return {
-                width: viewfinderWidth * 0.8,
-                height: viewfinderHeight * 0.5
-            };
-        },
-        // IL TRUCCO MAGICO: Forza l'uso dell'API nativa del telefono invece del lento Javascript
-        experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
-        }
-        // Abbiamo rimosso 'formatsToSupport': ora leggerà QUALSIASI cosa veda.
+        fps: 10,
+        qrbox: function(vw, vh) { return { width: vw * 0.8, height: vh * 0.5 }; },
+        // TRICK 1: Force native phone hardware acceleration
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        // TRICK 2: Only look for the 3 formats used by LCSC/Digikey/Mouser
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.CODE_128
+        ]
       },
       onScanSuccess,
-      () => {} // Ignora i frame a vuoto in silenzio
+      () => {} 
     );
     
     // Tenta di accendere il flash
@@ -1526,6 +1588,26 @@ function esc(s) {
   if (s === null || s === undefined) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+async function enrichOldData() {
+  toast('Fetching missing data from LCSC…', 'info', 5000);
+  const res = await api('/api/components/enrich', {method:'POST'});
+  if (res.error) {
+    toast(res.error, 'error');
+    return;
+  }
+  if (res.enriched > 0) {
+    toast(`Enriched ${res.enriched} of ${res.attempted} component(s).`, 'success');
+  } else if (res.attempted === 0) {
+    toast('Nothing to enrich — all parts already have data.', 'info');
+  } else {
+    const why = (res.failures && res.failures[0]) ? ` (e.g. ${res.failures[0].reason})` : '';
+    toast(`Tried ${res.attempted}, none enriched — LCSC returned no data${why}. Check the server log.`, 'error', 8000);
+    console.warn('Enrich failures:', res.failures);
+  }
+  loadInventory();
+}
+
 </script>
 </body>
 </html>

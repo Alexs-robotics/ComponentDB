@@ -5,9 +5,10 @@ LCSC barcode scanning via phone/PC browser over HTTPS.
 """
 
 from flask import Flask, request, jsonify, render_template, redirect
-import sqlite3, json, re, os, socket
+import sqlite3, json, re, os, socket, time
 from datetime import datetime
 from pathlib import Path
+import urllib.request, urllib.error
 
 #  Config 
 BASE_DIR = Path(__file__).parent.absolute()
@@ -175,6 +176,111 @@ def parse_barcode(raw: str) -> dict:
     result["part_number"] = raw[:120]
     return result
 
+# In-process cache so a part is only fetched once per server run.
+_LCSC_CACHE = {}
+
+# Set LCSC_DEBUG=1 in the environment to print raw responses when a fetch fails.
+_LCSC_DEBUG = os.environ.get("LCSC_DEBUG") == "1"
+
+_BROWSER_HEADERS = {
+    'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                   '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'),
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.lcsc.com/',
+    'Connection': 'close',
+}
+
+
+def _http_json(url, timeout=8):
+    """GET a URL and parse JSON. Raises on any network/parse failure."""
+    req = urllib.request.Request(url, headers=_BROWSER_HEADERS)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        body = r.read().decode('utf-8', 'replace')
+    return json.loads(body)
+
+
+def _parse_wmsc(data):
+    """LCSC internal product API -> normalized fields, or None."""
+    if data.get("code") == 200 and data.get("result"):
+        res = data["result"]
+        return {
+            "manufacturer_part": res.get("productModel") or "",
+            "description": res.get("productIntroEn") or "",
+            "package": res.get("encapStandard") or "",
+            "datasheet_url": res.get("pdfUrl") or "",
+            "category": res.get("catalogName") or "",
+            "value": res.get("productValue") or res.get("value") or "",
+        }
+    return None
+
+
+def _parse_easyeda(data):
+    """EasyEDA/JLCPCB component API -> normalized fields, or None.
+    Field names vary by part; parsing is defensive on purpose. If a part
+    comes back with empty fields, run with LCSC_DEBUG=1 to inspect the raw
+    JSON and adjust the key names below."""
+    if not data.get("success"):
+        return None
+    res = data.get("result") or {}
+    head = (res.get("dataStr") or {}).get("head") or {}
+    para = head.get("c_para") or {}
+    return {
+        "manufacturer_part": (para.get("Manufacturer Part") or para.get("Supplier Part")
+                              or res.get("title") or ""),
+        "description": res.get("description") or res.get("title") or "",
+        "package": para.get("package") or para.get("Package") or "",
+        "datasheet_url": (res.get("lcsc") or {}).get("url") or res.get("datasheet") or "",
+        "category": (res.get("tags") or [""])[0] if res.get("tags") else "",
+        "value": para.get("Value") or para.get("value") or "",
+    }
+
+
+def _fetch_lcsc(part_number):
+    """Fetch part data, trying multiple endpoints with retries.
+
+    Returns (data_dict, error_string). On success error_string is None;
+    on failure data_dict is None and error_string explains why. This lets
+    callers report exactly what happened instead of guessing."""
+    pn = (part_number or "").strip().upper()
+    if not pn.startswith("C"):
+        return None, "not an LCSC part number"
+    if pn in _LCSC_CACHE:
+        return _LCSC_CACHE[pn], None
+
+    sources = [
+        ("wmsc", f"https://wmsc.lcsc.com/wmsc/product/detail?productCode={pn}", _parse_wmsc),
+        ("easyeda", f"https://easyeda.com/api/products/{pn}/components?version=6.4.19.5", _parse_easyeda),
+    ]
+    last_err = None
+    for name, url, parser in sources:
+        for attempt in range(3):
+            try:
+                raw = _http_json(url)
+                parsed = parser(raw)
+                if parsed and any(v for v in parsed.values()):
+                    _LCSC_CACHE[pn] = parsed
+                    return parsed, None
+                # Reached the server but it had nothing usable: move to next source.
+                last_err = f"{name}: no usable data"
+                if _LCSC_DEBUG:
+                    print(f"[LCSC] {pn} {name} empty -> {str(raw)[:400]}")
+                break
+            except urllib.error.HTTPError as e:
+                last_err = f"{name}: HTTP {e.code}"
+            except urllib.error.URLError as e:
+                last_err = f"{name}: {e.reason}"
+            except Exception as e:
+                last_err = f"{name}: {type(e).__name__}: {e}"
+            time.sleep(0.5 * (attempt + 1))  # backoff before retrying this source
+    return None, last_err or "unknown error"
+
+
+def fetch_lcsc_data(part_number):
+    """Backward-compatible wrapper: returns the data dict, or {} on failure."""
+    data, _ = _fetch_lcsc(part_number)
+    return data or {}
+
 #  Routes 
 
 @app.route("/")
@@ -205,6 +311,17 @@ def api_scan():
     if not parsed["part_number"]:
         return jsonify({"error": "Could not parse barcode", "raw": raw}), 400
 
+    # --- FETCH MISSING DATA ---
+    enrich = fetch_lcsc_data(parsed["part_number"])
+    if enrich:
+        parsed["manufacturer_part"] = enrich.get("manufacturer_part") or parsed.get("manufacturer_part", "")
+        parsed["description"] = enrich.get("description") or parsed.get("description", "")
+        parsed["package"] = enrich.get("package", "")
+        parsed["category"] = enrich.get("category", "")
+        parsed["value"] = enrich.get("value", "")
+        parsed["datasheet_url"] = enrich.get("datasheet_url", "")
+    # --------------------------
+
     qty = int(qty_override) if qty_override is not None else int(parsed["quantity"])
     if qty <= 0:
         return jsonify({"error": "Quantity must be positive"}), 400
@@ -213,60 +330,95 @@ def api_scan():
 
     conn = get_db()
     try:
-        existing = conn.execute(
-            "SELECT * FROM components WHERE part_number = ?", (parsed["part_number"],)
-        ).fetchone()
+        existing = conn.execute("SELECT * FROM components WHERE part_number = ?", (parsed["part_number"],)).fetchone()
 
         if existing:
-                    qty_before = existing["quantity"]
-                    qty_after = max(0, qty_before + qty_change)
-                    conn.execute(
-                        """UPDATE components SET
-                           quantity = ?,
-                           manufacturer_part = CASE WHEN manufacturer_part = '' THEN ? ELSE manufacturer_part END,
-                           description = CASE WHEN description = '' THEN ? ELSE description END,
-                           supplier = CASE WHEN supplier = 'Unknown' THEN ? ELSE supplier END,
-                           updated_at = datetime('now','localtime')
-                           WHERE part_number = ?""",
-                        (qty_after, parsed["manufacturer_part"], parsed["description"],
-                         parsed["supplier"], parsed["part_number"]),
-                    )
-                    comp_id = existing["id"]
-                    is_new = False # <--- ADD THIS
+            qty_before = existing["quantity"]
+            qty_after = max(0, qty_before + qty_change)
+            conn.execute(
+                """UPDATE components SET
+                   quantity = ?,
+                   manufacturer_part = CASE WHEN manufacturer_part = '' THEN ? ELSE manufacturer_part END,
+                   description = CASE WHEN description = '' THEN ? ELSE description END,
+                   supplier = CASE WHEN supplier = 'Unknown' THEN ? ELSE supplier END,
+                   package = CASE WHEN package = '' THEN ? ELSE package END,
+                   category = CASE WHEN category = '' THEN ? ELSE category END,
+                   value = CASE WHEN value = '' THEN ? ELSE value END,
+                   datasheet_url = CASE WHEN datasheet_url = '' THEN ? ELSE datasheet_url END,
+                   updated_at = datetime('now','localtime')
+                   WHERE part_number = ?""",
+                (qty_after, parsed.get("manufacturer_part", ""), parsed.get("description", ""),
+                 parsed["supplier"], parsed.get("package", ""), parsed.get("category", ""), 
+                 parsed.get("value", ""), parsed.get("datasheet_url", ""), parsed["part_number"]),
+            )
+            comp_id = existing["id"]
+            is_new = False
         else:
             qty_before = 0
             qty_after = max(0, qty_change)
             cur = conn.execute(
                 """INSERT INTO components
-                   (part_number, manufacturer_part, description, supplier, quantity, package)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (parsed["part_number"], parsed["manufacturer_part"],
-                 parsed["description"], parsed["supplier"], qty_after,
-                 parsed.get("package", "")),
+                   (part_number, manufacturer_part, description, supplier, quantity, package, category, value, datasheet_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (parsed["part_number"], parsed.get("manufacturer_part", ""),
+                 parsed.get("description", ""), parsed["supplier"], qty_after,
+                 parsed.get("package", ""), parsed.get("category", ""), 
+                 parsed.get("value", ""), parsed.get("datasheet_url", "")),
             )
             comp_id = cur.lastrowid
-            is_new = True # <--- ADD THIS
+            is_new = True
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
 
-        conn.execute(
-            """INSERT INTO transactions
-               (component_id, part_number, quantity_change, quantity_before, quantity_after,
-                operation, source, barcode_raw, notes)
-               VALUES (?, ?, ?, ?, ?, ?, 'scan', ?, ?)""",
-            (comp_id, parsed["part_number"], qty_change, qty_before,
-             qty_after, operation, raw[:500], notes),
-        )
+@app.route("/api/components/enrich", methods=["POST"])
+def api_enrich_all():
+    """Fill in missing data for LCSC parts that have no category yet.
+
+    Selects on category='' only (not value=''), because many parts legitimately
+    have no value and would otherwise be re-fetched on every run, inflating the
+    count while changing nothing. Reports attempted / enriched / failed so the
+    UI can never disguise a no-op as a success."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, part_number FROM components "
+            "WHERE part_number LIKE 'C%' AND category = '' "
+            "ORDER BY id LIMIT 100"
+        ).fetchall()
+        attempted = len(rows)
+        enriched = 0
+        failures = []
+        for r in rows:
+            data, err = _fetch_lcsc(r["part_number"])
+            if err or not data:
+                failures.append({"part": r["part_number"], "reason": err or "no data"})
+                continue
+            cur = conn.execute(
+                """UPDATE components SET
+                   manufacturer_part = CASE WHEN manufacturer_part='' THEN ? ELSE manufacturer_part END,
+                   description       = CASE WHEN description='' THEN ? ELSE description END,
+                   package           = CASE WHEN package='' THEN ? ELSE package END,
+                   category          = CASE WHEN category='' THEN ? ELSE category END,
+                   value             = CASE WHEN value='' THEN ? ELSE value END,
+                   datasheet_url     = CASE WHEN datasheet_url='' THEN ? ELSE datasheet_url END,
+                   updated_at        = datetime('now','localtime')
+                   WHERE id = ? AND category = ''""",
+                (data.get("manufacturer_part", ""), data.get("description", ""),
+                 data.get("package", ""), data.get("category", ""),
+                 data.get("value", ""), data.get("datasheet_url", ""), r["id"])
+            )
+            if cur.rowcount > 0:
+                enriched += 1
         conn.commit()
-
-        comp = dict(conn.execute("SELECT * FROM components WHERE id = ?", (comp_id,)).fetchone())
         return jsonify({
             "success": True,
-            "operation": operation,
-            "quantity_change": qty_change,
-            "quantity_before": qty_before,
-            "quantity_after": qty_after,
-            "component": comp,
-            "parsed": parsed,
-            "is_new": is_new, # <--- ADD THIS TO THE RETURN
+            "attempted": attempted,
+            "enriched": enriched,
+            "failed": len(failures),
+            "failures": failures[:10],  # sample for debugging
         })
     except Exception as e:
         conn.rollback()
