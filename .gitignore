@@ -1,0 +1,18 @@
+# Environments
+venv/
+env/
+
+# Secrets and Keys
+*.pem
+key.pem
+cert.pem
+.env
+
+# Databases
+*.db
+*.sqlite3
+components.db
+
+# Python Cache
+__pycache__/
+*.pyc

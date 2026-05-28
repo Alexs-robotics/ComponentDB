@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ComponentDB</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg:       #080c10;
+  --bg1:      #0d1117;
+  --bg2:      #161b22;
+  --bg3:      #21262d;
+  --border:   #30363d;
+  --border2:  #3d444d;
+  --text:     #c9d1d9;
+  --muted:    #768390;
+  --cyan:     #00d4ff;
+  --cyan-dim: #00a8cc;
+  --green:    #3fb950;
+  --red:      #f85149;
+  --amber:    #d29922;
+  --purple:   #a371f7;
+  --lcsc:     #e36209;
+  --digikey:  #cc0000;
+  --mouser:   #007ac2;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-head: 'Rajdhani', sans-serif;
+  --radius:   6px;
+  --scan-speed: 2s;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 13px; overflow: hidden; }
+
+/* ── Scrollbar ─────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg1); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Layout ────────────────────────────────────────── */
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── Header ────────────────────────────────────────── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; height: 52px; flex-shrink: 0;
+  background: var(--bg1); border-bottom: 1px solid var(--border);
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon {
+  width: 28px; height: 28px; border: 2px solid var(--cyan);
+  border-radius: 4px; display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.logo-icon::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(0,212,255,.15) 0%, transparent 60%);
+}
+.logo-icon svg { width: 16px; height: 16px; fill: var(--cyan); }
+.logo-text { font-family: var(--font-head); font-size: 20px; font-weight: 700; color: #fff; letter-spacing: 1px; }
+.logo-text span { color: var(--cyan); }
+.stats-bar { display: flex; gap: 20px; font-size: 11px; color: var(--muted); }
+.stat-item { display: flex; align-items: center; gap: 5px; }
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.stat-dot.amber { background: var(--amber); }
+.stat-num { color: var(--text); font-weight: 500; }
+
+/* ── Tabs ──────────────────────────────────────────── */
+nav {
+  display: flex; background: var(--bg1); border-bottom: 1px solid var(--border);
+  padding: 0 16px; flex-shrink: 0;
+}
+.tab {
+  padding: 10px 20px; cursor: pointer; font-size: 12px; font-weight: 500;
+  color: var(--muted); border-bottom: 2px solid transparent;
+  transition: all .2s; white-space: nowrap; user-select: none;
+  display: flex; align-items: center; gap: 6px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+.tab-badge {
+  background: var(--bg3); color: var(--muted); padding: 1px 6px;
+  border-radius: 10px; font-size: 10px;
+}
+.tab.active .tab-badge { background: rgba(0,212,255,.15); color: var(--cyan); }
+
+/* ── Main panels ───────────────────────────────────── */
+#panels { flex: 1; overflow: hidden; position: relative; }
+.panel { display: none; height: 100%; overflow-y: auto; padding: 20px; }
+.panel.active { display: block; }
+
+/* ── SCANNER TAB ────────────────────────────────────── */
+#panel-scanner { display: none; padding: 16px; }
+#panel-scanner.active { display: flex; flex-direction: column; gap: 16px; }
+
+.scan-layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; height: calc(100vh - 140px); }
+@media (max-width: 900px) { .scan-layout { grid-template-columns: 1fr; height: auto; } }
+
+/* Camera area */
+.camera-card {
+  background: var(--bg1); border: 1px solid var(--border); border-radius: var(--radius);
+  display: flex; flex-direction: column; overflow: hidden; min-height: 400px;
+}
+.camera-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.camera-title { font-family: var(--font-head); font-size: 16px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
+.scan-status { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.status-indicator {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--muted);
+  transition: background .3s;
+}
+.status-indicator.scanning { background: var(--cyan); animation: pulse 1s infinite; }
+.status-indicator.detected { background: var(--green); animation: none; }
+.status-indicator.error { background: var(--red); animation: none; }
+
+.camera-body { flex: 1; position: relative; background: #000; min-height: 300px; }
+#reader { width: 100% !important; }
+#reader video { width: 100% !important; border-radius: 0 !important; }
+#reader img { display: none !important; }
+
+/* Corner brackets overlay */
+.scan-overlay {
+  position: absolute; inset: 0; pointer-events: none; z-index: 10;
+}
+.corner {
+  position: absolute; width: 24px; height: 24px;
+  border-color: var(--cyan); border-style: solid; border-width: 0;
+}
+.corner.tl { top: 20px; left: 20px; border-top-width: 3px; border-left-width: 3px; }
+.corner.tr { top: 20px; right: 20px; border-top-width: 3px; border-right-width: 3px; }
+.corner.bl { bottom: 20px; left: 20px; border-bottom-width: 3px; border-left-width: 3px; }
+.corner.br { bottom: 20px; right: 20px; border-bottom-width: 3px; border-right-width: 3px; }
+.scan-line {
+  position: absolute; left: 20px; right: 20px; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  top: 20px; animation: scanline var(--scan-speed) ease-in-out infinite;
+  display: none; box-shadow: 0 0 8px var(--cyan);
+}
+.scan-line.active { display: block; }
+@keyframes scanline {
+  0%   { top: 20px; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: calc(100% - 22px); opacity: 0; }
+}
+
+/* Manual input */
+.manual-row {
+  display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border);
+  background: var(--bg2);
+}
+.manual-row input {
+  flex: 1; background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text); padding: 8px 12px; border-radius: var(--radius);
+  font-family: var(--font-mono); font-size: 12px; outline: none;
+  transition: border-color .2s;
+}
+.manual-row input:focus { border-color: var(--cyan); }
+.manual-row input::placeholder { color: var(--muted); }
+
+/* Right panel — result card */
+.result-panel { display: flex; flex-direction: column; gap: 12px; }
+
+.result-card {
+  background: var(--bg1); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.result-card-header {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.result-card-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.supplier-badge {
+  padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 700;
+  letter-spacing: .05em;
+}
+.supplier-badge.LCSC    { background: rgba(227,98,9,.15); color: var(--lcsc); border: 1px solid rgba(227,98,9,.3); }
+.supplier-badge.DigiKey { background: rgba(204,0,0,.15); color: var(--digikey); border: 1px solid rgba(204,0,0,.3); }
+.supplier-badge.Mouser  { background: rgba(0,122,194,.15); color: var(--mouser); border: 1px solid rgba(0,122,194,.3); }
+.supplier-badge.Unknown { background: var(--bg3); color: var(--muted); border: 1px solid var(--border); }
+
+.result-body { padding: 16px; }
+.result-pn {
+  font-family: var(--font-head); font-size: 26px; font-weight: 700; color: #fff;
+  margin-bottom: 4px; word-break: break-all;
+}
+.result-mpn { font-size: 12px; color: var(--cyan); margin-bottom: 8px; }
+.result-desc { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 12px; min-height: 36px; }
+.result-stock { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.stock-num { font-family: var(--font-head); font-size: 36px; font-weight: 700; }
+.stock-num.zero { color: var(--red); }
+.stock-num.low  { color: var(--amber); }
+.stock-num.ok   { color: var(--green); }
+.stock-label { color: var(--muted); font-size: 11px; }
+
+/* Qty controls */
+.qty-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.qty-label { font-size: 11px; color: var(--muted); min-width: 40px; }
+.qty-ctrl { display: flex; align-items: center; gap: 0; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); overflow: hidden; }
+.qty-btn {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text); font-size: 16px; user-select: none;
+  transition: background .15s, color .15s;
+}
+.qty-btn:hover { background: var(--border); }
+.qty-input {
+  width: 60px; height: 32px; background: transparent; border: none; outline: none;
+  color: var(--text); text-align: center; font-family: var(--font-mono);
+  font-size: 14px; font-weight: 500;
+}
+/* Arrow buttons remove */
+.qty-input::-webkit-outer-spin-button,
+.qty-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.qty-input[type=number] { -moz-appearance: textfield; }
+
+/* Action buttons */
+.action-row { display: flex; gap: 8px; }
+.btn {
+  flex: 1; padding: 10px 16px; border-radius: var(--radius); border: none;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 6px;
+  letter-spacing: .02em;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-add    { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.4); }
+.btn-remove { background: rgba(248,81,73,.12); color: var(--red);   border: 1px solid rgba(248,81,73,.3); }
+.btn-add:hover:not(:disabled)    { background: rgba(63,185,80,.25); }
+.btn-remove:hover:not(:disabled) { background: rgba(248,81,73,.22); }
+.btn-primary { background: rgba(0,212,255,.12); color: var(--cyan); border: 1px solid rgba(0,212,255,.35); }
+.btn-primary:hover { background: rgba(0,212,255,.22); }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { color: var(--text); border-color: var(--border2); background: var(--bg3); }
+.btn-danger { background: rgba(248,81,73,.12); color: var(--red); border: 1px solid rgba(248,81,73,.3); }
+.btn-danger:hover { background: rgba(248,81,73,.22); }
+
+/* Toast */
+#toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  padding: 12px 18px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 500;
+  background: var(--bg2); border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  transform: translateY(80px); opacity: 0;
+  transition: all .25s cubic-bezier(.34,1.56,.64,1);
+  display: flex; align-items: center; gap: 8px; max-width: 340px;
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.success { border-color: rgba(63,185,80,.5); }
+#toast.error   { border-color: rgba(248,81,73,.5); }
+#toast.info    { border-color: rgba(0,212,255,.4); }
+.toast-icon { font-size: 16px; }
+
+/* Raw barcode display */
+.raw-bar {
+  padding: 8px 12px; background: var(--bg3); border-radius: var(--radius);
+  font-size: 10px; color: var(--muted); word-break: break-all; line-height: 1.5;
+  border: 1px solid var(--border);
+}
+.raw-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+
+/* ── INVENTORY TAB ──────────────────────────────────── */
+.inv-toolbar {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px;
+}
+.search-box {
+  flex: 1; min-width: 200px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 8px 12px 8px 36px; color: var(--text);
+  font-family: var(--font-mono); font-size: 12px; outline: none;
+  transition: border-color .2s; position: relative;
+}
+.search-wrap { flex: 1; min-width: 200px; position: relative; }
+.search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); opacity: .4; pointer-events: none; }
+.search-box:focus { border-color: var(--cyan); }
+.filter-select {
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 12px; border-radius: var(--radius); font-family: var(--font-mono);
+  font-size: 12px; outline: none; cursor: pointer;
+}
+.filter-select:focus { border-color: var(--cyan); }
+
+/* Component table */
+.table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+table { width: 100%; border-collapse: collapse; }
+thead { position: sticky; top: 0; z-index: 2; background: var(--bg2); }
+th {
+  padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+  white-space: nowrap; border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none; transition: color .15s;
+}
+th:hover { color: var(--text); }
+th.sort-asc::after  { content: ' ↑'; color: var(--cyan); }
+th.sort-desc::after { content: ' ↓'; color: var(--cyan); }
+td {
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+  font-size: 12px; vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg2); }
+.pn-cell { font-weight: 600; color: #fff; font-size: 13px; }
+.mpn-cell { color: var(--cyan); font-size: 11px; }
+.desc-cell { color: var(--muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qty-cell { font-family: var(--font-head); font-size: 18px; font-weight: 700; }
+.qty-cell.zero { color: var(--red); }
+.qty-cell.low  { color: var(--amber); }
+.qty-cell.ok   { color: var(--green); }
+.adj-btns { display: flex; gap: 4px; }
+.adj-btn {
+  width: 26px; height: 26px; border-radius: 4px; border: none; cursor: pointer;
+  font-size: 14px; font-weight: 700; transition: all .15s; display: flex;
+  align-items: center; justify-content: center; font-family: var(--font-mono);
+}
+.adj-btn.plus  { background: rgba(63,185,80,.12); color: var(--green); }
+.adj-btn.minus { background: rgba(248,81,73,.1); color: var(--red); }
+.adj-btn:hover.plus  { background: rgba(63,185,80,.25); }
+.adj-btn:hover.minus { background: rgba(248,81,73,.22); }
+.adj-btn-del { background: transparent; color: var(--muted); font-size: 14px; }
+.adj-btn-del:hover { color: var(--red); }
+
+.empty-state { padding: 60px 20px; text-align: center; color: var(--muted); }
+.empty-icon { font-size: 36px; margin-bottom: 12px; opacity: .5; }
+.empty-text { font-size: 14px; color: var(--muted); }
+
+.table-footer {
+  padding: 10px 16px; background: var(--bg2); border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted); display: flex; justify-content: space-between;
+}
+
+/* Edit inline */
+.editable-field {
+  background: transparent; border: 1px solid transparent; color: inherit;
+  font-family: inherit; font-size: inherit; padding: 2px 4px;
+  border-radius: 3px; width: 100%; outline: none; transition: all .15s;
+}
+.editable-field:focus { border-color: var(--cyan); background: var(--bg3); }
+
+/* ── QUERY TAB ──────────────────────────────────────── */
+.query-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; height: calc(100vh - 160px); }
+@media (max-width: 800px) { .query-layout { grid-template-columns: 1fr; height: auto; } }
+
+.query-sidebar { display: flex; flex-direction: column; gap: 8px; }
+.sidebar-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+.template-btn {
+  padding: 8px 12px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); cursor: pointer; text-align: left;
+  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  transition: all .15s; line-height: 1.4;
+}
+.template-btn:hover { border-color: var(--border2); color: var(--text); background: var(--bg3); }
+.template-btn strong { color: var(--cyan); display: block; font-size: 11px; margin-bottom: 2px; }
+
+.query-main { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+.sql-area {
+  width: 100%; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px; color: var(--text);
+  font-family: var(--font-mono); font-size: 13px; resize: vertical;
+  outline: none; transition: border-color .2s; min-height: 120px; line-height: 1.6;
+}
+.sql-area:focus { border-color: var(--cyan); }
+
+.query-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.write-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: var(--muted); }
+.toggle-switch {
+  width: 32px; height: 18px; background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 9px; position: relative; transition: background .2s; flex-shrink: 0;
+}
+.toggle-switch::after {
+  content: ''; position: absolute; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--muted); top: 2px; left: 2px; transition: all .2s;
+}
+.write-toggle input { display: none; }
+.write-toggle input:checked + .toggle-switch { background: rgba(248,81,73,.3); border-color: var(--red); }
+.write-toggle input:checked + .toggle-switch::after { left: 16px; background: var(--red); }
+
+.results-wrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.result-meta { padding: 8px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+.result-meta .ok  { color: var(--green); }
+.result-meta .err { color: var(--red); }
+
+/* ── HISTORY TAB ────────────────────────────────────── */
+.history-list { display: flex; flex-direction: column; gap: 6px; }
+.tx-item {
+  display: grid; grid-template-columns: 110px 1fr auto;
+  gap: 12px; padding: 12px 16px; background: var(--bg1); border: 1px solid var(--border);
+  border-radius: var(--radius); align-items: center; transition: border-color .15s;
+}
+.tx-item:hover { border-color: var(--border2); }
+.tx-time { font-size: 11px; color: var(--muted); }
+.tx-pn   { font-weight: 600; color: #fff; font-size: 13px; }
+.tx-supplier-badge {
+  font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 6px;
+}
+.tx-desc { font-size: 11px; color: var(--muted); }
+.tx-delta { font-family: var(--font-head); font-size: 20px; font-weight: 700; text-align: right; }
+.tx-delta.add    { color: var(--green); }
+.tx-delta.remove { color: var(--red); }
+.tx-stock { font-size: 11px; color: var(--muted); text-align: right; }
+
+/* ── Modal ──────────────────────────────────────────── */
+.modal-backdrop {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+  z-index: 999; align-items: center; justify-content: center;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--bg1); border: 1px solid var(--border2); border-radius: 8px;
+  width: 460px; max-width: calc(100vw - 32px); max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+.modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.modal-title { font-family: var(--font-head); font-size: 18px; font-weight: 600; }
+.modal-close { cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px; }
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+.field-group { display: flex; flex-direction: column; gap: 4px; }
+.field-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.field-input {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); padding: 8px 12px; font-family: var(--font-mono); font-size: 12px;
+  outline: none; transition: border-color .2s; width: 100%;
+}
+.field-input:focus { border-color: var(--cyan); }
+.field-input[type=number] { -moz-appearance: textfield; }
+.field-input::-webkit-outer-spin-button, .field-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+/* Scrollable panel height  */
+#panel-inventory, #panel-query, #panel-history, #panel-bom { height: calc(100vh - 110px); overflow-y: auto; }
+
+/* Loading spinner */
+.spinner {
+  width: 18px; height: 18px; border: 2px solid var(--border);
+  border-top-color: var(--cyan); border-radius: 50%;
+  animation: spin .7s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.section-title { font-family: var(--font-head); font-size: 16px; font-weight: 600; }
+/* ── BOM CHECKER ────────────────────────────────────── */
+.bom-dropzone {
+  border: 2px dashed var(--border2); border-radius: var(--radius);
+  padding: 48px 20px; text-align: center; cursor: pointer;
+  transition: all .2s; background: var(--bg1); margin-bottom: 20px;
+}
+.bom-dropzone:hover, .bom-dropzone.drag-over {
+  border-color: var(--cyan); background: rgba(0,212,255,.04);
+}
+.bom-dropzone-icon { font-size: 40px; margin-bottom: 12px; opacity: .7; }
+.bom-dropzone-text { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.bom-dropzone-text strong { color: var(--cyan); }
+
+.bom-summary-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px; margin-bottom: 20px;
+}
+.bom-stat-card {
+  background: var(--bg1); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; text-align: center;
+}
+.bom-stat-num { font-family: var(--font-head); font-size: 32px; font-weight: 700; }
+.bom-stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.bom-stat-card.ok     .bom-stat-num { color: var(--green); }
+.bom-stat-card.warn   .bom-stat-num { color: var(--amber); }
+.bom-stat-card.miss   .bom-stat-num { color: var(--red); }
+.bom-stat-card.total  .bom-stat-num { color: var(--cyan); }
+
+.bom-status-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.bom-status-badge.ok   { background: rgba(63,185,80,.12);  color: var(--green); }
+.bom-status-badge.warn { background: rgba(210,153,34,.12); color: var(--amber); }
+.bom-status-badge.miss { background: rgba(248,81,73,.12);  color: var(--red);   }
+.bom-progress { height: 4px; border-radius: 2px; background: var(--bg3); margin-top: 6px; overflow: hidden; }
+.bom-progress-bar { height: 100%; border-radius: 2px; transition: width .4s; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 5h2v14H3V5zm4 0h2v14H7V5zm4 0h1v14h-1V5zm3 0h2v14h-2V5zm4 0h3v14h-3V5z"/>
+        </svg>
+      </div>
+      <span class="logo-text">Component<span>DB</span></span>
+    </div>
+    <div class="stats-bar" id="header-stats">
+      <div class="stat-item"><div class="stat-dot"></div><span class="stat-num" id="stat-parts">—</span>&nbsp;parts</div>
+      <div class="stat-item"><div class="stat-dot amber" id="low-dot"></div><span class="stat-num" id="stat-low">—</span>&nbsp;low stock</div>
+      <div class="stat-item" style="display:none" id="scan-count-wrap"><div class="stat-dot"></div><span class="stat-num" id="stat-scans">—</span>&nbsp;scans/24h</div>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav>
+    <div class="tab active" data-tab="scanner">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5h2v14H3V5zm4 0h2v14H7V5zm4 0h1v14h-1V5zm3 0h2v14h-2V5zm4 0h3v14h-3V5z"/></svg>
+      Scanner
+    </div>
+    <div class="tab" data-tab="inventory">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/></svg>
+      Inventory
+      <span class="tab-badge" id="tab-inv-count">0</span>
+    </div>
+    <div class="tab" data-tab="query">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zM6 9.5h2v2H6zm0 3.5h2v2H6zm3-3.5h9v2H9zm0 3.5h5v2H9z"/></svg>
+      SQL Query
+    </div>
+    <div class="tab" data-tab="bom">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+      BOM Check
+    </div>
+    <div class="tab" data-tab="history">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+      History
+    </div>
+  </nav>
+
+  <!-- Panels -->
+  <div id="panels">
+
+    <!-- ── SCANNER ─────────────────────────────────────── -->
+    <div class="panel active" id="panel-scanner">
+      <div class="scan-layout">
+        <!-- Camera -->
+        <div class="camera-card">
+          <div class="camera-header">
+            <div class="camera-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color:var(--cyan)"><path d="M12 15.2c-1.77 0-3.2-1.43-3.2-3.2S10.23 8.8 12 8.8s3.2 1.43 3.2 3.2-1.43 3.2-3.2 3.2zM9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>
+              Camera Scanner
+            </div>
+            <div class="scan-status">
+              <div class="status-indicator" id="status-dot"></div>
+              <span id="status-text" style="color:var(--muted)">Idle</span>
+            </div>
+          </div>
+          <div class="camera-body">
+            <div id="reader"></div>
+            <div class="scan-overlay">
+              <div class="corner tl"></div><div class="corner tr"></div>
+              <div class="corner bl"></div><div class="corner br"></div>
+              <div class="scan-line" id="scan-line"></div>
+            </div>
+          </div>
+          <div class="manual-row">
+            <input type="text" id="manual-input" placeholder="Or paste / type barcode here…" autocomplete="off">
+            <button class="btn btn-primary" onclick="processManual()" style="flex:none;width:90px">Parse</button>
+          </div>
+        </div>
+
+        <!-- Result panel -->
+        <div class="result-panel">
+          <!-- Start / Stop -->
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" id="btn-scan-start" onclick="startScanner()" style="flex:1">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 15.2c-1.77 0-3.2-1.43-3.2-3.2S10.23 8.8 12 8.8s3.2 1.43 3.2 3.2-1.43 3.2-3.2 3.2zM9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>
+              Start Camera
+            </button>
+            <button class="btn btn-ghost" id="btn-scan-stop" onclick="stopScanner()" style="flex:none;display:none">Stop</button>
+          </div>
+
+          <!-- Parsed result -->
+          <div class="result-card" id="result-card">
+            <div class="result-card-header">
+              <span class="result-card-title">Detected Component</span>
+              <span class="supplier-badge Unknown" id="badge-supplier">—</span>
+            </div>
+            <div class="result-body">
+              <div class="result-pn" id="res-pn">Scan a barcode to begin</div>
+              <div class="result-mpn" id="res-mpn"></div>
+              <div class="result-desc" id="res-desc">Point your camera at an LCSC or DigiKey barcode label</div>
+
+              <div class="result-stock">
+                <div>
+                  <div class="stock-num ok" id="res-stock">—</div>
+                  <div class="stock-label">in stock</div>
+                </div>
+              </div>
+
+              <div class="qty-row">
+                <span class="qty-label">Qty</span>
+                <div class="qty-ctrl">
+                  <div class="qty-btn" onclick="adjustQty(-1)">−</div>
+                  <input class="qty-input" type="number" id="qty-input" value="1" min="1">
+                  <div class="qty-btn" onclick="adjustQty(1)">+</div>
+                </div>
+              </div>
+
+              <div class="action-row">
+                <button class="btn btn-add" id="btn-add" onclick="doScan('ADD')" disabled>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                  ADD
+                </button>
+                <button class="btn btn-remove" id="btn-remove" onclick="doScan('REMOVE')" disabled>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z"/></svg>
+                  REMOVE
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Raw barcode -->
+          <div id="raw-card" style="display:none">
+            <div class="raw-label">Raw barcode data</div>
+            <div class="raw-bar" id="raw-display"></div>
+          </div>
+
+          <!-- Last action feedback -->
+          <div id="action-feedback" style="display:none;padding:12px 16px;background:var(--bg1);border:1px solid var(--border);border-radius:var(--radius)">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Last Action</div>
+            <div id="feedback-text" style="font-size:13px;font-weight:500"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── INVENTORY ──────────────────────────────────── -->
+    <div class="panel" id="panel-inventory">
+      <div class="section-head">
+        <span class="section-title">Inventory</span>
+        <button class="btn btn-primary" onclick="openAddModal()" style="width:auto;padding:8px 16px">
+          + Add Component
+        </button>
+      </div>
+
+      <div class="inv-toolbar">
+        <div class="search-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--muted)"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input class="search-box" id="inv-search" type="text" placeholder="Search part, description, package…" oninput="loadInventory()">
+        </div>
+        <select class="filter-select" id="inv-supplier" onchange="loadInventory()">
+          <option value="">All Suppliers</option>
+          <option value="LCSC">LCSC</option>
+          <option value="DigiKey">DigiKey</option>
+          <option value="Mouser">Mouser</option>
+          <option value="Unknown">Unknown</option>
+        </select>
+        <select class="filter-select" id="inv-sort" onchange="loadInventory()">
+          <option value="updated_at-DESC">Recently Updated</option>
+          <option value="quantity-ASC">Qty: Low → High</option>
+          <option value="quantity-DESC">Qty: High → Low</option>
+          <option value="part_number-ASC">Part # A→Z</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Part Number</th>
+              <th>MPN / Manufacturer</th>
+              <th>Description</th>
+              <th>Supplier</th>
+              <th>Package</th>
+              <th>Qty</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="inv-tbody">
+            <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--muted)"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+        <div class="table-footer">
+          <span id="inv-count-info">Loading…</span>
+          <span id="inv-page-info"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── QUERY ──────────────────────────────────────── -->
+    <div class="panel" id="panel-query">
+      <div class="section-head">
+        <span class="section-title">SQL Query</span>
+        <span style="font-size:11px;color:var(--muted)">Tables: <code style="color:var(--cyan)">components</code>, <code style="color:var(--cyan)">transactions</code></span>
+      </div>
+
+      <div class="query-layout">
+        <!-- Sidebar: templates -->
+        <div class="query-sidebar">
+          <div class="sidebar-label">Templates</div>
+
+          <div class="template-btn" onclick="setQuery(`SELECT * FROM components ORDER BY quantity ASC LIMIT 50`)">
+            <strong>Low Stock</strong>All parts ordered by qty ascending
+          </div>
+          <div class="template-btn" onclick="setQuery(`SELECT * FROM components WHERE quantity = 0`)">
+            <strong>Out of Stock</strong>Parts with zero quantity
+          </div>
+          <div class="template-btn" onclick="setQuery(`SELECT supplier, COUNT(*) as parts, SUM(quantity) as total_qty\nFROM components\nGROUP BY supplier\nORDER BY parts DESC`)">
+            <strong>By Supplier</strong>Parts count per supplier
+          </div>
+          <div class="template-btn" onclick="setQuery(`SELECT part_number, manufacturer_part, quantity\nFROM components\nWHERE supplier = 'LCSC'\nORDER BY updated_at DESC`)">
+            <strong>LCSC Parts</strong>All LCSC components
+          </div>
+          <div class="template-btn" onclick="setQuery(`SELECT part_number, manufacturer_part, quantity\nFROM components\nWHERE supplier = 'DigiKey'\nORDER BY updated_at DESC`)">
+            <strong>DigiKey Parts</strong>All DigiKey components
+          </div>
+          <div class="template-btn" onclick="setQuery(`SELECT t.timestamp, t.part_number, t.operation,\n  t.quantity_change, t.quantity_after\nFROM transactions t\nORDER BY t.timestamp DESC\nLIMIT 50`)">
+            <strong>Recent Transactions</strong>Last 50 operations
+          </div>
+          <div class="template-btn" onclick="setQuery(`SELECT c.part_number, c.description,\n  SUM(CASE WHEN t.operation='ADD' THEN t.quantity_change ELSE 0 END) as total_in,\n  SUM(CASE WHEN t.operation='REMOVE' THEN ABS(t.quantity_change) ELSE 0 END) as total_out,\n  c.quantity as current\nFROM components c\nLEFT JOIN transactions t ON c.id = t.component_id\nGROUP BY c.id\nORDER BY total_in DESC`)">
+            <strong>Usage Stats</strong>Total in/out per part
+          </div>
+          <div class="template-btn" onclick="setQuery(`SELECT part_number, manufacturer_part, description, package, quantity\nFROM components\nWHERE description LIKE '%capacitor%'\n   OR description LIKE '%CAP%'\nORDER BY part_number`)">
+            <strong>Find Capacitors</strong>Search by description
+          </div>
+
+          <div class="sidebar-label" style="margin-top:8px">Schema</div>
+          <div style="font-size:10px;color:var(--muted);line-height:1.7;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius)">
+            <div style="color:var(--cyan)">components</div>
+            id, part_number, manufacturer_part, description, supplier, quantity, package, value, category, notes, created_at, updated_at<br><br>
+            <div style="color:var(--cyan)">transactions</div>
+            id, component_id, part_number, quantity_change, quantity_before, quantity_after, operation, source, timestamp
+          </div>
+        </div>
+
+        <!-- Query area -->
+        <div class="query-main">
+          <textarea class="sql-area" id="sql-input" spellcheck="false"
+            placeholder="SELECT * FROM components WHERE quantity <= 10 ORDER BY quantity ASC;">SELECT * FROM components ORDER BY updated_at DESC LIMIT 50;</textarea>
+
+          <div class="query-toolbar">
+            <button class="btn btn-primary" onclick="runQuery()" style="width:auto;padding:9px 20px">
+              ▶ Run Query
+            </button>
+            <label class="write-toggle">
+              <input type="checkbox" id="allow-write">
+              <div class="toggle-switch"></div>
+              Allow writes (INSERT / UPDATE / DELETE)
+            </label>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto" id="q-elapsed"></span>
+          </div>
+
+          <div class="results-wrap" id="query-results">
+            <div class="result-meta"><span>Run a query to see results</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── BOM CHECKER ─────────────────────────────────── -->
+    <div class="panel" id="panel-bom">
+      <div class="section-head">
+        <span class="section-title">BOM Checker</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:11px;color:var(--muted)">EasyEDA XLS / XLSX export</span>
+          <button class="btn btn-ghost" id="bom-reset-btn" onclick="resetBom()"
+            style="width:auto;padding:5px 12px;font-size:11px;display:none">✕ Clear</button>
+        </div>
+      </div>
+
+      <!-- Drop zone -->
+      <div class="bom-dropzone" id="bom-dropzone"
+           onclick="document.getElementById('bom-file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="handleBomDrop(event)">
+        <div class="bom-dropzone-icon">📄</div>
+        <div class="bom-dropzone-text">
+          <strong>Click to upload</strong> or drag &amp; drop your EasyEDA BOM file<br>
+          Supports <strong>.xls</strong> and <strong>.xlsx</strong>
+        </div>
+        <input type="file" id="bom-file-input" accept=".xls,.xlsx" style="display:none" onchange="handleBomFile(this.files[0])">
+      </div>
+
+      <!-- Summary cards -->
+      <div class="bom-summary-grid" id="bom-summary" style="display:none">
+        <div class="bom-stat-card total">
+          <div class="bom-stat-num" id="bom-total">0</div>
+          <div class="bom-stat-label">Total unique parts</div>
+        </div>
+        <div class="bom-stat-card ok">
+          <div class="bom-stat-num" id="bom-ok">0</div>
+          <div class="bom-stat-label">In stock ✓</div>
+        </div>
+        <div class="bom-stat-card warn">
+          <div class="bom-stat-num" id="bom-low">0</div>
+          <div class="bom-stat-label">Low / partial ⚠</div>
+        </div>
+        <div class="bom-stat-card miss">
+          <div class="bom-stat-num" id="bom-miss">0</div>
+          <div class="bom-stat-label">Missing ✗</div>
+        </div>
+      </div>
+
+      <!-- Progress bar while checking -->
+      <div id="bom-progress-wrap" style="display:none;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px">
+          <span>Checking inventory…</span>
+          <span id="bom-progress-label">0 / 0</span>
+        </div>
+        <div class="bom-progress">
+          <div class="bom-progress-bar" id="bom-progress-bar" style="width:0%;background:var(--cyan)"></div>
+        </div>
+      </div>
+
+      <!-- Results table -->
+      <div class="table-wrap" id="bom-table-wrap" style="display:none">
+        <table>
+          <thead>
+            <tr>
+              <th>Designator(s)</th>
+              <th>Component / Value</th>
+              <th>LCSC Part #</th>
+              <th>Footprint</th>
+              <th>Required</th>
+              <th>In Stock</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="bom-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── HISTORY ─────────────────────────────────────── -->
+    <div class="panel" id="panel-history">
+      <div class="section-head">
+        <span class="section-title">Transaction History</span>
+        <select class="filter-select" id="hist-limit" onchange="loadHistory()">
+          <option value="50">Last 50</option>
+          <option value="100">Last 100</option>
+          <option value="250">Last 250</option>
+          <option value="500">Last 500</option>
+        </select>
+      </div>
+      <div class="history-list" id="history-list">
+        <div style="text-align:center;padding:40px;color:var(--muted)"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit/Add Modal -->
+<div class="modal-backdrop" id="modal-comp">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title" id="modal-title">Component Details</span>
+      <span class="modal-close" onclick="closeModal()">✕</span>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="modal-comp-id">
+      <div class="field-group">
+        <label class="field-label">Part Number *</label>
+        <input class="field-input" id="modal-pn" type="text" placeholder="e.g. C123456 or 296-10001-1-ND">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Manufacturer Part Number</label>
+        <input class="field-input" id="modal-mpn" type="text" placeholder="e.g. ATMEGA328P-PU">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Description</label>
+        <input class="field-input" id="modal-desc" type="text" placeholder="e.g. 100nF 100V X5R 0402 MLCC">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field-group">
+          <label class="field-label">Supplier</label>
+          <select class="field-input" id="modal-supplier">
+            <option>LCSC</option><option>DigiKey</option><option>Mouser</option><option>Unknown</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Quantity</label>
+          <input class="field-input" id="modal-qty" type="number" min="0" value="0">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field-group">
+          <label class="field-label">Package</label>
+          <input class="field-input" id="modal-pkg" type="text" placeholder="0402, DIP-28, SOT-23…">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Value</label>
+          <input class="field-input" id="modal-val" type="text" placeholder="100nF, 10kΩ…">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Category</label>
+        <input class="field-input" id="modal-cat" type="text" placeholder="Capacitor, Resistor, MCU…">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Notes</label>
+        <input class="field-input" id="modal-notes" type="text" placeholder="Optional notes">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()" style="width:auto;padding:8px 16px">Cancel</button>
+      <button class="btn btn-primary" id="modal-save-btn" onclick="saveComponent()" style="width:auto;padding:8px 20px">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"><span class="toast-icon"></span><span id="toast-msg"></span></div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let scanner = null;
+let scanning = false;
+let lastParsed = null;
+let toastTimer = null;
+let invData = [];
+let sortField = 'updated_at', sortOrder = 'DESC';
+
+// ── Tab routing ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab, .panel').forEach(e => e.classList.remove('active'));
+    t.classList.add('active');
+    const id = 'panel-' + t.dataset.tab;
+    document.getElementById(id).classList.add('active');
+    if (t.dataset.tab === 'inventory') loadInventory();
+    if (t.dataset.tab === 'history')   loadHistory();
+    if (t.dataset.tab === 'scanner')   {} // camera stays as-is
+  });
+});
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type='info', dur=3000) {
+  const el = document.getElementById('toast');
+  const icons = {success:'✅', error:'❌', info:'ℹ️'};
+  el.className = `show ${type}`;
+  document.getElementById('toast-msg').textContent = msg;
+  el.querySelector('.toast-icon').textContent = icons[type] || '';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Fetch helpers ────────────────────────────────────────────────────────────
+async function api(path, opts={}) {
+  const r = await fetch(path, {
+    headers: {'Content-Type':'application/json'},
+    ...opts,
+  });
+  return r.json();
+}
+
+// ── Stats ────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  const s = await api('/api/stats');
+  document.getElementById('stat-parts').textContent = s.total_parts ?? '—';
+  document.getElementById('stat-low').textContent = s.low_stock_count ?? '—';
+  document.getElementById('stat-scans').textContent = s.recent_scans_24h ?? '—';
+  document.getElementById('tab-inv-count').textContent = s.total_parts ?? '0';
+  const lowDot = document.getElementById('low-dot');
+  lowDot.style.background = (s.low_stock_count > 0) ? 'var(--amber)' : 'var(--green)';
+}
+loadStats();
+setInterval(loadStats, 30000);
+
+// ── Scanner ──────────────────────────────────────────────────────────────────
+function setStatus(state, text) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  dot.className = 'status-indicator ' + state;
+  txt.textContent = text;
+  txt.style.color = state === 'detected' ? 'var(--green)' : state === 'error' ? 'var(--red)' : 'var(--muted)';
+  document.getElementById('scan-line').className = 'scan-line' + (state === 'scanning' ? ' active' : '');
+}
+
+async function startScanner() {
+  if (!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    toast('Camera scanning is only available on mobile devices', 'info');
+    return;
+  }
+  if (scanning) return;
+  try {
+    scanner = new Html5Qrcode('reader');
+    const devices = await Html5Qrcode.getCameras();
+    if (!devices.length) { toast('No camera found', 'error'); return; }
+    
+    // Cerca la fotocamera posteriore principale
+    const cam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
+
+    await scanner.start(
+      { deviceId: { exact: cam.id } },
+      {
+        fps: 15, // Aumentiamo i frame per secondo
+        // Rendiamo l'area di scansione dinamica (80% della larghezza) invece di un quadrato rigido
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
+            return {
+                width: viewfinderWidth * 0.8,
+                height: viewfinderHeight * 0.5
+            };
+        },
+        // IL TRUCCO MAGICO: Forza l'uso dell'API nativa del telefono invece del lento Javascript
+        experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+        }
+        // Abbiamo rimosso 'formatsToSupport': ora leggerà QUALSIASI cosa veda.
+      },
+      onScanSuccess,
+      () => {} // Ignora i frame a vuoto in silenzio
+    );
+    
+    // Tenta di accendere il flash
+    setTimeout(async () => {
+      try {
+        await scanner.applyVideoConstraints({ advanced: [{ torch: true }] });
+      } catch (err) {
+        console.warn("Impossibile accendere il flash:", err);
+      }
+    }, 500);
+
+    scanning = true;
+    setStatus('scanning', 'Scanning…');
+    document.getElementById('btn-scan-start').style.display = 'none';
+    document.getElementById('btn-scan-stop').style.display = '';
+  } catch(e) {
+    toast('Camera error: ' + e, 'error');
+    setStatus('error', 'Camera error');
+  }
+}
+
+async function stopScanner() {
+  if (scanner && scanning) {
+    await scanner.stop().catch(()=>{});
+    scanner = null;
+  }
+  scanning = false;
+  setStatus('', 'Idle');
+  document.getElementById('btn-scan-start').style.display = '';
+  document.getElementById('btn-scan-stop').style.display = 'none';
+  document.getElementById('scan-line').classList.remove('active');
+}
+
+let lastRaw = '';
+async function onScanSuccess(raw) {
+  if (raw === lastRaw) return; // debounce
+  lastRaw = raw;
+  setTimeout(() => { lastRaw = ''; }, 2500);
+  await parseAndDisplay(raw);
+}
+
+async function processManual() {
+  const v = document.getElementById('manual-input').value.trim();
+  if (!v) { toast('Enter a barcode string', 'error'); return; }
+  await parseAndDisplay(v);
+}
+
+document.getElementById('manual-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') processManual();
+});
+
+async function parseAndDisplay(raw) {
+  const res = await api('/api/parse', { method:'POST', body: JSON.stringify({barcode: raw}) });
+  lastParsed = res;
+  lastParsed._raw = raw;
+
+  // Fetch existing stock
+  let stock = null;
+  if (res.part_number) {
+    const inv = await api('/api/components?q=' + encodeURIComponent(res.part_number) + '&limit=1');
+    const match = (inv.components || []).find(c => c.part_number === res.part_number);
+    stock = match ? match.quantity : 0;
+  }
+
+  // Update UI
+  const supplier = res.supplier || 'Unknown';
+  document.getElementById('badge-supplier').textContent = supplier;
+  document.getElementById('badge-supplier').className = 'supplier-badge ' + supplier;
+  document.getElementById('res-pn').textContent = res.part_number || '(unknown)';
+  document.getElementById('res-mpn').textContent = res.manufacturer_part || '';
+  document.getElementById('res-desc').textContent = res.description || '—';
+  document.getElementById('qty-input').value = Math.max(1, res.quantity || 1);
+
+  const sq = document.getElementById('res-stock');
+  sq.textContent = stock !== null ? stock : '—';
+  sq.className = 'stock-num ' + (stock === 0 ? 'zero' : stock <= 5 ? 'low' : 'ok');
+
+  // Enable buttons if we have a valid PN
+  const hasPN = !!res.part_number;
+  document.getElementById('btn-add').disabled    = !hasPN;
+  document.getElementById('btn-remove').disabled = !hasPN;
+
+  // Show raw
+  document.getElementById('raw-display').textContent = raw;
+  document.getElementById('raw-card').style.display = '';
+
+  setStatus('detected', 'Detected: ' + supplier);
+}
+
+function adjustQty(d) {
+  const el = document.getElementById('qty-input');
+  el.value = Math.max(1, parseInt(el.value || 1) + d);
+}
+
+async function doScan(op) {
+  if (!lastParsed || !lastParsed.part_number) { toast('No component detected', 'error'); return; }
+  const qty = parseInt(document.getElementById('qty-input').value);
+  if (!qty || qty <= 0) { toast('Invalid quantity', 'error'); return; }
+
+  const res = await api('/api/scan', {
+    method: 'POST',
+    body: JSON.stringify({
+      barcode: lastParsed._raw || lastParsed.part_number,
+      quantity: qty,
+      operation: op,
+    })
+  });
+
+  if (res.error) { toast('Error: ' + res.error, 'error'); return; }
+
+  const sign = op === 'ADD' ? '+' : '−';
+  const color = op === 'ADD' ? 'var(--green)' : 'var(--red)';
+  document.getElementById('action-feedback').style.display = '';
+  document.getElementById('feedback-text').innerHTML =
+    `<span style="color:${color}">${sign}${qty}</span> &nbsp;${res.component.part_number} &nbsp;→ stock: <strong>${res.quantity_after}</strong>`;
+
+  // Update stock display
+  const sq = document.getElementById('res-stock');
+  sq.textContent = res.quantity_after;
+  sq.className = 'stock-num ' + (res.quantity_after === 0 ? 'zero' : res.quantity_after <= 5 ? 'low' : 'ok');
+
+  const compName = res.component.manufacturer_part || res.component.description || res.component.part_number;
+  if (res.is_new) {
+    toast(`Created ${compName} with a starting ${res.quantity_after} components`, 'success');
+  } else {
+    toast(`${op === 'ADD' ? 'Added' : 'Removed'} ${qty} ${compName}`, 'success');
+  }
+  
+  loadStats();
+}
+
+// ── Inventory ────────────────────────────────────────────────────────────────
+async function loadInventory() {
+  const q   = document.getElementById('inv-search').value;
+  const sup = document.getElementById('inv-supplier').value;
+  const sv  = document.getElementById('inv-sort').value.split('-');
+  const sf  = sv[0], so = sv[1];
+
+  const data = await api(`/api/components?q=${encodeURIComponent(q)}&supplier=${sup}&sort=${sf}&order=${so}&limit=500`);
+  invData = data.components || [];
+
+  const tbody = document.getElementById('inv-tbody');
+  document.getElementById('inv-count-info').textContent = `${invData.length} of ${data.total} components`;
+
+  if (!invData.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">No components found</div></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = invData.map(c => {
+    const qClass = c.quantity === 0 ? 'zero' : c.quantity <= 5 ? 'low' : 'ok';
+    const supBg  = {LCSC:'rgba(227,98,9,.12)',DigiKey:'rgba(204,0,0,.1)',Mouser:'rgba(0,122,194,.1)'}[c.supplier] || 'transparent';
+    const supCol = {LCSC:'var(--lcsc)',DigiKey:'var(--digikey)',Mouser:'var(--mouser)'}[c.supplier] || 'var(--muted)';
+    return `<tr>
+      <td class="pn-cell">${esc(c.part_number)}</td>
+      <td class="mpn-cell">${esc(c.manufacturer_part||'—')}</td>
+      <td class="desc-cell" title="${esc(c.description||'')}">${esc(c.description||'—')}</td>
+      <td><span style="font-size:11px;padding:2px 7px;border-radius:3px;background:${supBg};color:${supCol};font-weight:600">${esc(c.supplier)}</span></td>
+      <td style="color:var(--muted)">${esc(c.package||'—')}</td>
+      <td class="qty-cell ${qClass}">${c.quantity}</td>
+      <td>
+        <div class="adj-btns">
+          <button class="adj-btn plus"  onclick="quickAdj(${c.id}, 1)"  title="Add 1">+</button>
+          <button class="adj-btn minus" onclick="quickAdj(${c.id},-1)"  title="Remove 1">−</button>
+          <button class="adj-btn adj-btn-del" onclick="editComp(${c.id})" title="Edit">✏️</button>
+          <button class="adj-btn adj-btn-del" onclick="delComp(${c.id}, '${esc(c.part_number)}')" title="Delete">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function quickAdj(id, change) {
+  const res = await api(`/api/components/${id}/adjust`, {method:'POST', body:JSON.stringify({change})});
+  if (res.error) { toast(res.error, 'error'); return; }
+  toast(`${change > 0 ? '+' : ''}${change} → ${res.quantity_after} in stock`, change > 0 ? 'success' : 'info');
+  loadInventory(); loadStats();
+}
+
+async function delComp(id, pn) {
+  if (!confirm(`Delete "${pn}"? This cannot be undone.`)) return;
+  const res = await api(`/api/components/${id}`, {method:'DELETE'});
+  if (res.error) { toast(res.error,'error'); return; }
+  toast(`Deleted ${pn}`, 'info');
+  loadInventory(); loadStats();
+}
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+function openAddModal() {
+  document.getElementById('modal-title').textContent = 'Add Component';
+  document.getElementById('modal-comp-id').value = '';
+  ['pn','mpn','desc','pkg','val','cat','notes'].forEach(f => document.getElementById('modal-'+f).value = '');
+  document.getElementById('modal-qty').value = '0';
+  document.getElementById('modal-supplier').value = 'LCSC';
+  document.getElementById('modal-comp').classList.add('open');
+  setTimeout(() => document.getElementById('modal-pn').focus(), 50);
+}
+
+async function editComp(id) {
+  const c = await api(`/api/components/${id}`);
+  document.getElementById('modal-title').textContent = 'Edit Component';
+  document.getElementById('modal-comp-id').value = c.id;
+  document.getElementById('modal-pn').value = c.part_number;
+  document.getElementById('modal-mpn').value = c.manufacturer_part || '';
+  document.getElementById('modal-desc').value = c.description || '';
+  document.getElementById('modal-supplier').value = c.supplier || 'Unknown';
+  document.getElementById('modal-qty').value = c.quantity;
+  document.getElementById('modal-pkg').value = c.package || '';
+  document.getElementById('modal-val').value = c.value || '';
+  document.getElementById('modal-cat').value = c.category || '';
+  document.getElementById('modal-notes').value = c.notes || '';
+  document.getElementById('modal-comp').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-comp').classList.remove('open'); }
+
+async function saveComponent() {
+  const id  = document.getElementById('modal-comp-id').value;
+  const pn  = document.getElementById('modal-pn').value.trim();
+  if (!pn) { toast('Part number is required', 'error'); return; }
+  
+  const body = {
+    part_number:       pn,
+    manufacturer_part: document.getElementById('modal-mpn').value,
+    description:       document.getElementById('modal-desc').value,
+    supplier:          document.getElementById('modal-supplier').value,
+    quantity:          parseInt(document.getElementById('modal-qty').value) || 0,
+    package:           document.getElementById('modal-pkg').value,
+    value:             document.getElementById('modal-val').value,
+    category:          document.getElementById('modal-cat').value,
+    notes:             document.getElementById('modal-notes').value,
+  };
+
+  let res;
+  if (id) {
+    // Standard edit overrides everything, including quantity
+    res = await api(`/api/components/${id}`, {method:'PUT', body:JSON.stringify(body)});
+  } else {
+    // Add amount to total via the scan API
+    res = await api('/api/scan', {
+      method:'POST',
+      body: JSON.stringify({barcode: pn, quantity: body.quantity, operation:'ADD'})
+    });
+    
+    // Patch extra fields WITHOUT overwriting the quantity we just correctly incremented
+    if (res.success && res.component) {
+      let putBody = { ...body };
+      delete putBody.quantity; 
+      await api(`/api/components/${res.component.id}`, {method:'PUT', body:JSON.stringify(putBody)});
+    }
+  }
+
+  if (res.error) { toast(res.error,'error'); return; }
+  
+  // Custom toast notifications for manual addition
+  if (!id) {
+    const compName = res.component.manufacturer_part || res.component.description || res.component.part_number;
+    if (res.is_new) {
+      toast(`Created ${compName} with a starting ${res.quantity_after} components`, 'success');
+    } else {
+      toast(`Added ${body.quantity} ${compName}`, 'success');
+    }
+  } else {
+    toast(`Saved ${pn}`, 'success');
+  }
+  
+  closeModal(); loadInventory(); loadStats();
+}
+
+document.getElementById('modal-comp').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-comp')) closeModal();
+});
+
+// ── Query ────────────────────────────────────────────────────────────────────
+function setQuery(sql) { document.getElementById('sql-input').value = sql; }
+
+async function runQuery() {
+  const sql   = document.getElementById('sql-input').value.trim();
+  const write = document.getElementById('allow-write').checked;
+  if (!sql) return;
+
+  const t0  = Date.now();
+  const res = await api('/api/query', {method:'POST', body:JSON.stringify({sql, allow_write:write})});
+  const ms  = Date.now() - t0;
+  document.getElementById('q-elapsed').textContent = `${ms}ms`;
+
+  const wrap = document.getElementById('query-results');
+
+  if (res.error) {
+    wrap.innerHTML = `<div class="result-meta"><span class="err">Error: ${esc(res.error)}</span></div>`;
+    return;
+  }
+
+  if (res.success) {
+    wrap.innerHTML = `<div class="result-meta"><span class="ok">✓ Query executed. ${res.rowcount} row(s) affected.</span></div>`;
+    loadInventory(); loadStats();
+    return;
+  }
+
+  const cols = res.columns || [];
+  const rows = res.rows || [];
+  if (!cols.length) {
+    wrap.innerHTML = `<div class="result-meta"><span>No results</span></div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="result-meta">
+      <span class="ok">${rows.length} row${rows.length!==1?'s':''} returned</span>
+      <span>${ms}ms</span>
+    </div>
+    <div style="overflow:auto">
+    <table>
+      <thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${esc(v??'NULL')}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>
+    </div>`;
+}
+
+document.getElementById('sql-input').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runQuery(); }
+});
+
+// ── History ──────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const limit = document.getElementById('hist-limit').value;
+  const data  = await api(`/api/history?limit=${limit}`);
+  const list  = document.getElementById('history-list');
+  const txs   = data.transactions || [];
+
+  if (!txs.length) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">No transactions yet</div></div>`;
+    return;
+  }
+
+  const supColor = {LCSC:'var(--lcsc)',DigiKey:'var(--digikey)',Mouser:'var(--mouser)'};
+  list.innerHTML = txs.map(t => {
+    const isAdd = t.quantity_change > 0;
+    const sc = supColor[t.supplier] || 'var(--muted)';
+    const dt = t.timestamp ? t.timestamp.replace('T',' ').slice(0,16) : '';
+    return `<div class="tx-item">
+      <div>
+        <div class="tx-time">${esc(dt)}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${esc(t.source||'scan')}</div>
+      </div>
+      <div>
+        <div class="tx-pn">${esc(t.part_number)}
+          ${t.supplier ? `<span class="tx-supplier-badge" style="background:transparent;border:1px solid ${sc};color:${sc}">${esc(t.supplier)}</span>` : ''}
+        </div>
+        <div class="tx-desc">${esc(t.comp_desc||'')}</div>
+      </div>
+      <div>
+        <div class="tx-delta ${isAdd?'add':'remove'}">${isAdd?'+':''}${t.quantity_change}</div>
+        <div class="tx-stock">${t.quantity_before} → ${t.quantity_after}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── BOM Checker ─────────────────────────────────────────────────────────────
+
+function handleBomDrop(e) {
+  e.preventDefault();
+  document.getElementById('bom-dropzone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleBomFile(file);
+}
+
+function handleBomFile(file) {
+  if (!file) return;
+  if (!/\.(xls|xlsx)$/i.test(file.name)) {
+    toast('Please upload an .xls or .xlsx file', 'error'); return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => parseBomExcel(e.target.result);
+  reader.readAsArrayBuffer(file);
+}
+
+if (!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+  document.querySelector('[data-tab="scanner"]').style.display = 'none';
+  document.querySelector('[data-tab="inventory"]').click();
+  const nav = document.querySelector('nav');
+  const notice = document.createElement('div');
+  notice.style.cssText = 'margin-left:auto;display:flex;align-items:center;padding:0 16px;font-size:11px;color:var(--amber);gap:6px;';
+  notice.innerHTML = '⚠ QR Code scanner not available on PC!';
+  nav.appendChild(notice);
+}
+
+function parseBomExcel(buffer) {
+  try {
+    const wb   = XLSX.read(buffer, { type: 'arraybuffer' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+    if (!rows.length) { toast('No data found in file', 'error'); return; }
+
+    // ── Detect column names (EasyEDA uses various naming conventions) ────
+    const keys = Object.keys(rows[0]);
+
+    const find = (...candidates) =>
+      keys.find(k => candidates.some(c => k.trim().toLowerCase().includes(c.toLowerCase()))) || '';
+
+    const colLCSC  = find('LCSC Part', 'LCSC#', 'LCSC #', 'Supplier Part', 'BOM_Supplier Part');
+    const colQty   = find('Quantity', 'Qty', 'Count', 'Amount');
+    const colDes   = find('Designator', 'Reference', 'Ref Des', 'RefDes');
+    const colName  = find('Name', 'Value', 'Comment', 'Component');
+    const colFoot  = find('Footprint', 'Package', 'Pattern');
+    const colMPN   = find('Manufacturer Part', 'MPN', 'Mfr Part', 'BOM_Manufacturer Part');
+
+    // ── Parse rows into BOM items ────────────────────────────────────────
+    const bom = rows.map(r => ({
+      lcsc:       (r[colLCSC]  || '').toString().trim(),
+      qty:        parseInt(r[colQty]  || 1) || 1,
+      designator: (r[colDes]   || '').toString().trim(),
+      name:       (r[colName]  || '').toString().trim(),
+      footprint:  (r[colFoot]  || '').toString().trim(),
+      mpn:        (r[colMPN]   || '').toString().trim(),
+    })).filter(r => r.lcsc || r.mpn || r.name); // skip totally empty rows
+
+    if (!bom.length) { toast('No component rows found — check file format', 'error'); return; }
+
+    checkBomAgainstInventory(bom);
+  } catch(e) {
+    toast('Failed to parse file: ' + e.message, 'error');
+    console.error(e);
+  }
+}
+
+async function checkBomAgainstInventory(bom) {
+  // Show progress, hide drop zone
+  document.getElementById('bom-dropzone').style.display  = 'none';
+  document.getElementById('bom-progress-wrap').style.display = '';
+  document.getElementById('bom-reset-btn').style.display  = '';
+
+  const results = [];
+  const total   = bom.length;
+
+  for (let i = 0; i < bom.length; i++) {
+    const item = bom[i];
+
+    // Update progress bar
+    document.getElementById('bom-progress-label').textContent = `${i + 1} / ${total}`;
+    document.getElementById('bom-progress-bar').style.width   = `${((i + 1) / total) * 100}%`;
+
+    // Look up by LCSC PN first, fall back to MPN, then name
+    let stock = 0, foundPN = '';
+    const searchTerm = item.lcsc || item.mpn || item.name;
+
+    if (searchTerm) {
+      const data = await api(`/api/components?q=${encodeURIComponent(searchTerm)}&limit=5`);
+      // Find best match: prefer exact LCSC match, then exact MPN, then any
+      const comps = data.components || [];
+      const exact = comps.find(c =>
+        (item.lcsc && c.part_number === item.lcsc) ||
+        (item.mpn  && c.manufacturer_part === item.mpn)
+      ) || comps[0];
+
+      if (exact) { stock = exact.quantity; foundPN = exact.part_number; }
+    }
+
+    // Status: ok = have enough, warn = have some but not enough, miss = zero
+    const status = stock === 0         ? 'miss'
+                 : stock < item.qty    ? 'warn'
+                 :                       'ok';
+
+    results.push({ ...item, stock, foundPN, status });
+  }
+
+  renderBomResults(results);
+}
+
+function renderBomResults(results) {
+  document.getElementById('bom-progress-wrap').style.display = 'none';
+  document.getElementById('bom-summary').style.display       = '';
+  document.getElementById('bom-table-wrap').style.display    = '';
+
+  const counts = { ok: 0, warn: 0, miss: 0 };
+  results.forEach(r => counts[r.status]++);
+
+  document.getElementById('bom-total').textContent = results.length;
+  document.getElementById('bom-ok').textContent    = counts.ok;
+  document.getElementById('bom-low').textContent   = counts.warn;
+  document.getElementById('bom-miss').textContent  = counts.miss;
+
+  const statusLabel = {
+    ok:   '<span class="bom-status-badge ok">✓ In Stock</span>',
+    warn: '<span class="bom-status-badge warn">⚠ Partial</span>',
+    miss: '<span class="bom-status-badge miss">✗ Missing</span>',
+  };
+
+  // Sort: missing first, then partial, then ok
+  const order = { miss: 0, warn: 1, ok: 2 };
+  results.sort((a, b) => order[a.status] - order[b.status]);
+
+  document.getElementById('bom-tbody').innerHTML = results.map(r => `
+    <tr>
+      <td style="color:var(--muted);font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${esc(r.designator)}">${esc(r.designator) || '—'}</td>
+      <td>
+        <div style="font-weight:600;color:#fff">${esc(r.name) || '—'}</div>
+        ${r.mpn ? `<div style="font-size:11px;color:var(--muted)">${esc(r.mpn)}</div>` : ''}
+      </td>
+      <td style="color:var(--cyan);font-size:12px">${esc(r.lcsc || r.foundPN || '—')}</td>
+      <td style="color:var(--muted);font-size:11px">${esc(r.footprint) || '—'}</td>
+      <td style="font-family:var(--font-head);font-size:18px;font-weight:700;color:var(--text)">${r.qty}</td>
+      <td class="qty-cell ${r.status === 'ok' ? 'ok' : r.status === 'warn' ? 'low' : 'zero'}">${r.stock}</td>
+      <td>${statusLabel[r.status]}</td>
+    </tr>`).join('');
+}
+
+function resetBom() {
+  document.getElementById('bom-dropzone').style.display    = '';
+  document.getElementById('bom-summary').style.display     = 'none';
+  document.getElementById('bom-table-wrap').style.display  = 'none';
+  document.getElementById('bom-progress-wrap').style.display = 'none';
+  document.getElementById('bom-reset-btn').style.display   = 'none';
+  document.getElementById('bom-file-input').value          = '';
+  document.getElementById('bom-tbody').innerHTML           = '';
+}
+
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
