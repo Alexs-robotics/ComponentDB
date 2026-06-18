@@ -367,6 +367,25 @@ def api_scan():
             )
             comp_id = cur.lastrowid
             is_new = True
+            conn.execute(
+                """INSERT INTO transactions
+                   (component_id, part_number, quantity_change, quantity_before, quantity_after,
+                    operation, source, barcode_raw, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, 'scan', ?, ?)""",
+                (comp_id, parsed["part_number"], qty_change, qty_before, qty_after,
+                 operation, raw, notes),
+            )
+            conn.commit()
+
+            row = conn.execute("SELECT * FROM components WHERE id=?", (comp_id,)).fetchone()
+            return jsonify({
+                "success": True,
+                "component": dict(row),
+                "is_new": is_new,
+                "quantity_before": qty_before,
+                "quantity_after": qty_after,
+                "operation": operation,
+            })
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
